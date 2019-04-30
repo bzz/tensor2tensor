@@ -25,6 +25,20 @@ class ProgrammingMethodNamePy(text_problems.Text2TextProblem):
         problem.DatasetSplit.TEST: FILENAME.format(GH, "test"),
     }
 
+    @property
+    def dataset_splits(self):
+        """Splits of data to produce and number of output shards for each."""
+        return [{
+            "split": problem.DatasetSplit.TRAIN,
+            "shards": 30,
+        }, {
+            "split": problem.DatasetSplit.EVAL,
+            "shards": 1,
+        }, {
+            "split": problem.DatasetSplit.TEST,
+            "shards": 1,
+        }]
+
     @staticmethod
     def _extract_filename_from_url(url):
         # Ex: TRAIN_URL --> repo_split.parallel_declbodies.train
