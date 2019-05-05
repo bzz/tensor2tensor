@@ -53,8 +53,7 @@ def _maybe_download_corpus(tmp_dir):
         ["tar", "Jxf", compressed_split_filepath, "-C", tmp_dir],
         env=dict(os.environ, XZ_OPT="-T0"))
     split_files = sorted(tf.gfile.Glob(split_filepattern))
-    tf.logging.info("Listing %s, %d found", split_filepattern,
-                    len(split_files))
+    tf.logging.info("Listing %s, %d found", split_filepattern, len(split_files))
 
   if not split_files:
     tf.logging.info("Cann't use pre-split dataset, fall back to splitting")
@@ -213,12 +212,12 @@ class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
   @property
   def max_chars_for_vocab(self):
     """Number of characters of training data to use for generating vocab."""
-    return 4*10**7
+    return 1000 * 10**6  # 1 Gb
 
   @property
   def max_dev_chars(self):
     """Limit dev set to at most this many characters"""
-    return 10**7
+    return 100 * 10**6  # 100 Mb
 
 
 #TODO:
@@ -228,7 +227,7 @@ class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
 # Instead, every batch has the same sequence length and the same batch size.
 # Longer sequences are dropped and shorter ones are padded.
 #
-# - [x] A _packed option
+# - [x] A _packed option, seq length 256
 #   like LanguagemodelDeEnFrRoWiki64kFitbPacked1k or LanguagemodelLm1b32kPacked
 #   https://github.com/tensorflow/tensor2tensor/blob/f679aba4a254cb7f5c6cea11f3e431226a269957/tensor2tensor/models/transformer.py#L2342
 #
@@ -236,14 +235,14 @@ class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
 #    Pack multiple examples into a single example of constant length.
 #    This is useful for TPU training to reduce the fraction of padding tokens.
 
-# - A Chopped mode option?
+# - [x] chopped mode option
 #  ChoppedTextProblem is usually used for that and it
 #    is alos only one, that is affected by --num_concurrent_processes=N
 
 # - discard subtokens by freq <= 3
 #   `SubwordTextEncoder.build_to_target_size(.., min_val=3, ...)`
 #
-# - hyperparams: vocab size 25k, seq length 200, vocab learnign effort
+# - hyperparams: vocab size 25k, seq length 200, vocab learning effort
 #   To limit the number of samples the vocab generation
 #   looks at, override `self.max_samples_for_vocab
 
