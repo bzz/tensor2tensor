@@ -164,6 +164,63 @@ class ProgrammingLmJava32kPacked(ProgrammingLmJava32k):
     return ProgrammingLmJava32k().vocab_filename
 
 
+@registry.register_problem
+class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
+  """
+  All files are chopped arbitrarily into sequences of length 256 tokens,
+  without regard to article boundaries.
+  """
+
+  @property
+  def approx_vocab_size(self):
+    return 2**15  # 32768
+
+  def is_generate_per_split(self):
+    return False
+
+  @property
+  def dataset_splits(self):
+    """Splits of data to produce and number of output shards for each.
+
+    Returns:
+      A dict containing splits information.
+    """
+    return [{
+        "split": problem.DatasetSplit.TRAIN,
+        "shards": 100,
+    }, {
+        "split": problem.DatasetSplit.EVAL,
+        "shards": 1,
+    }]
+
+  @property
+  def dev_fraction(self):
+    return 100  # 12GB/4MB = 3000, take 1%
+
+  def train_text_filepaths(self, tmp_dir):
+    all_files = _maybe_download_corpus(tmp_dir)
+    return [f for i, f in enumerate(all_files) if i % self.dev_fraction != 0]
+
+  def dev_text_filepaths(self, tmp_dir):
+    all_files = _maybe_download_corpus(tmp_dir)
+    return [f for i, f in enumerate(all_files) if i % self.dev_fraction == 0]
+
+  @property
+  def sequence_length(self):
+    """Length of each example (in tokens)."""
+    return 256
+
+  @property
+  def max_chars_for_vocab(self):
+    """Number of characters of training data to use for generating vocab."""
+    return 4*10**7
+
+  @property
+  def max_dev_chars(self):
+    """Limit dev set to at most this many characters"""
+    return 10**7
+
+
 #TODO:
 # - context/sequence lenght? TPU only supports fixed length examples seq!
 #   default Transformer TPU: hparams.max_length = 64
