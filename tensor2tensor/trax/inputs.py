@@ -27,7 +27,7 @@ import gin
 
 import numpy as np
 
-from tensor2tensor import problems_colab as t2t_problems
+from tensor2tensor import problems as t2t_problems
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
