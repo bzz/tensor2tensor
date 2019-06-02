@@ -115,6 +115,7 @@ class ProgrammingLmJava32k(text_problems.Text2SelfProblem):
   def approx_vocab_size(self):
     return 2**15  # 32768
 
+  @property
   def is_generate_per_split(self):
     return False
 
@@ -228,6 +229,104 @@ class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
     return 100 * 10**6  # 100 Mb
 
 
+def _maybe_download_splitted_corpus(tmp_dir):
+  """Downloads and unpacks files for
+      - pre-processed (2M files -> 1 file of 12Gb)
+      - pre-splitted (train/validation/test without duplicates)
+      - pre-partitioned (each split in multiple 4Mb -part-????)
+     corpus.
+
+  Args:
+    tmp_dir: directory containing dataset.
+
+  Returns:
+    The list of names of files.
+  """
+  basename = "java_projects_processed_"
+  url = _HOST + basename + "split_parts.tar.xz"
+
+  compressed_parts_filename = os.path.basename(url)
+  compressed_parts_filepath = os.path.join(tmp_dir, compressed_parts_filename)
+
+  parts_file_prefix = os.path.join(tmp_dir, basename + "*.txt" + "-part-")
+  parts_filepattern = parts_file_prefix + "?????"
+  parts_files = sorted(tf.gfile.Glob(parts_filepattern))
+  tf.logging.info("Listing %s, %d found", parts_filepattern, len(parts_files))
+  if parts_files:  # uncompressed parts exist
+    return parts_files
+
+  ## try already preprocessed & part(itioned) dataset
+  if not tf.gfile.Exists(compressed_parts_filepath):
+    tf.logging.info(
+        "Archive {} not found, downloading".format(compressed_parts_filepath))
+    compressed_parts_filepath = generator_utils.maybe_download(
+        tmp_dir, compressed_parts_filename, url)
+
+  tf.logging.info("Decompressing {}".format(compressed_parts_filepath))
+  assert not subprocess.call(
+      ["tar", "Jxf", compressed_parts_filepath, "-C", tmp_dir],
+      env=dict(os.environ, XZ_OPT="-T0"))
+
+  parts_files = sorted(tf.gfile.Glob(parts_filepattern))
+  tf.logging.info("Listing %s, %d found", parts_filepattern, len(parts_files))
+  return parts_files
+
+
+@registry.register_problem
+class ProgrammingLmJava32kSplitChopped(text_problems.ChoppedTextProblem):
+  """
+  Pre-splitted version that relies on accurate splits duing pre-processing
+  (see preprocess-java.go)
+
+  All files are chopped arbitrarily into sequences of length 256 tokens,
+  without regard to file boundaries.
+  """
+
+  @property
+  def approx_vocab_size(self):
+    return 2**15  # 32768
+
+  def is_generate_per_split(self):
+    return True
+
+  @property
+  def max_dev_chars(self):
+    return 10**8  # 100 mb
+
+  @property
+  def max_chars_for_vocab(self):
+    """Number of characters of training data to use for generating vocab."""
+    return 10**8 # 100 Mb
+
+  @property
+  def dataset_splits(self):
+    """Number of output shards for each split.
+
+    Returns:
+      A dict containing splits information.
+    """
+    return [{
+        "split": problem.DatasetSplit.TRAIN,
+        "shards": 20,
+    }, {
+        "split": problem.DatasetSplit.EVAL,
+        "shards": 1,
+    }]
+
+  def train_text_filepaths(self, tmp_dir):
+    all_files = _maybe_download_splitted_corpus(tmp_dir)
+    return [f for f in all_files if "_train.txt-part-" in f]
+
+  def dev_text_filepaths(self, tmp_dir):
+    all_files = _maybe_download_splitted_corpus(tmp_dir)
+    return [f for f in all_files if "_val.txt-part-" in f]
+
+  @property
+  def sequence_length(self):
+    """Length of each example (in tokens)."""
+    return 256
+
+
 #TODO:
 # - context/sequence lenght? TPU only supports fixed length examples seq!
 #   default Transformer TPU: hparams.max_length = 64
@@ -250,7 +349,7 @@ class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
 # - discard subtokens by freq <= 3
 #   `SubwordTextEncoder.build_to_target_size(.., min_val=3, ...)`
 #
-# - hyperparams: vocab size 25k, seq length 200, vocab learning effort
+# - hyperparams: vocab size 25k, seq length 200, vocab learning effect
 #   To limit the number of samples the vocab generation
 #   looks at, override `self.max_samples_for_vocab
 
