@@ -14,6 +14,7 @@ from tensor2tensor.utils import registry
 import tensorflow as tf
 
 _URL = "http://groups.inf.ed.ac.uk/cup/javaGithub/java_projects.tar.gz"
+_HOST = "https://storage.googleapis.com/dataset.srcd.host/"
 
 
 def _maybe_download_corpus(tmp_dir):
@@ -25,43 +26,50 @@ def _maybe_download_corpus(tmp_dir):
   Returns:
     The list of names of files.
   """
-  host = "https://storage.googleapis.com/dataset.srcd.host/"
-  preprocessed_url = host + "java_projects_processed.txt.xz"
-  preprocessed_split_url = host + "java_projects_processed_parts.tar.xz"
+  preprocessed_url = _HOST + "java_projects_processed.txt.xz"
+  preprocessed_parts_url = _HOST + "java_projects_processed_parts.tar.xz"
 
-  compressed_split_filename = os.path.basename(preprocessed_split_url)
-  compressed_split_filepath = os.path.join(tmp_dir, compressed_split_filename)
+  compressed_parts_filename = os.path.basename(preprocessed_parts_url)
+  compressed_parts_filepath = os.path.join(tmp_dir, compressed_parts_filename)
 
   decompressed_filepath = os.path.join(tmp_dir,
                                        os.path.basename(preprocessed_url))[:-3]
-  split_file_prefix = decompressed_filepath + "-part-"
-  split_filepattern = split_file_prefix + "?????"
-  split_files = sorted(tf.gfile.Glob(split_filepattern))
-  tf.logging.info("Listing %s, %d found", split_filepattern, len(split_files))
-  if split_files:
-    return split_files
+  parts_file_prefix = decompressed_filepath + "-part-"
+  parts_filepattern = parts_file_prefix + "?????"
+  parts_files = sorted(tf.gfile.Glob(parts_filepattern))
+  tf.logging.info("Listing %s, %d found", parts_filepattern, len(parts_files))
+  if parts_files:  # uncompressed parts exist
+    return parts_files
 
-  ## try already preprocessed & splited dataset first
-  if not tf.gfile.Exists(compressed_split_filepath):
+  ## try already preprocessed & part(itioned) dataset
+  if not tf.gfile.Exists(compressed_parts_filepath):
     tf.logging.info(
-        "Archive {} not found, downloading".format(compressed_split_filepath))
-    compressed_split_filepath = generator_utils.maybe_download(
-        tmp_dir, compressed_split_filename, preprocessed_split_url)
+        "Archive {} not found, downloading".format(compressed_parts_filepath))
+    compressed_parts_filepath = generator_utils.maybe_download(
+        tmp_dir, compressed_parts_filename, preprocessed_parts_url)
 
-    tf.logging.info("Decompressing {}".format(compressed_split_filepath))
+    tf.logging.info("Decompressing {}".format(compressed_parts_filepath))
     assert not subprocess.call(
-        ["tar", "Jxf", compressed_split_filepath, "-C", tmp_dir],
+        ["tar", "Jxf", compressed_parts_filepath, "-C", tmp_dir],
         env=dict(os.environ, XZ_OPT="-T0"))
-    split_files = sorted(tf.gfile.Glob(split_filepattern))
-    tf.logging.info("Listing %s, %d found", split_filepattern, len(split_files))
+    parts_files = sorted(tf.gfile.Glob(parts_filepattern))
+    tf.logging.info("Listing %s, %d found", parts_filepattern, len(parts_files))
 
-  if not split_files:
-    tf.logging.info("Cann't use pre-split dataset, fall back to splitting")
-    return _maybe_download_uncompress_split(preprocessed_url, tmp_dir)
-  return split_files
+  if not parts_files:
+    tf.logging.info("Cann't use partitioned dataset, tring to partition")
+    return _maybe_download_uncompress_partition(preprocessed_url, tmp_dir)
+  return parts_files
 
 
-def _maybe_download_uncompress_split(preprocessed_url, tmp_dir):
+def _maybe_download_uncompress_partition(preprocessed_url, tmp_dir):
+  """Downloads, unpacks, partitions the single file of a pre-processed corpus.
+
+  Args:
+    tmp_dir: directory containing dataset.
+
+  Returns:
+    The list of names of files.
+  """
   compressed_filename = os.path.basename(preprocessed_url)
   compressed_filepath = os.path.join(tmp_dir, compressed_filename)
   ## download
@@ -72,28 +80,28 @@ def _maybe_download_uncompress_split(preprocessed_url, tmp_dir):
         tmp_dir, compressed_filename, preprocessed_url)
 
   decompressed_filepath = compressed_filepath[:-3]
-  split_file_prefix = decompressed_filepath + "-part-"
-  split_filepattern = split_file_prefix + "?????"
-  split_files = sorted(tf.gfile.Glob(split_filepattern))
-  tf.logging.info("Listing %s, %d found", split_filepattern, len(split_files))
+  parts_file_prefix = decompressed_filepath + "-part-"
+  parts_filepattern = parts_file_prefix + "?????"
+  parts_files = sorted(tf.gfile.Glob(parts_filepattern))
+  tf.logging.info("Listing %s, %d found", parts_filepattern, len(parts_files))
 
-  if not split_files:
+  if not parts_files:
     ## un-compress downloaded .xz
     if not tf.gfile.Exists(decompressed_filepath):
       tf.logging.info("Decompressing {}".format(compressed_filepath))
       assert not subprocess.call(["xz", "-dk", "-T0", compressed_filepath])
     assert tf.gfile.Exists(decompressed_filepath)
 
-    ## split into multiple text files
-    tf.logging.info("Splitting {} to 4Mb files".format(decompressed_filepath))
+    ## partition single big file (12Gb) into multiple small text files
+    tf.logging.info("Partition {} to 4Mb files".format(decompressed_filepath))
     assert not subprocess.call([
         "split", "--line-bytes=4M", "--suffix-length=5", "--numeric-suffixes",
-        decompressed_filepath, split_file_prefix
+        decompressed_filepath, parts_file_prefix
     ])
     tf.gfile.Remove(decompressed_filepath)
-    split_files = sorted(tf.gfile.Glob(split_filepattern))
+    parts_files = sorted(tf.gfile.Glob(parts_filepattern))
 
-  return split_files
+  return parts_files
 
 
 @registry.register_problem
@@ -167,7 +175,7 @@ class ProgrammingLmJava32kPacked(ProgrammingLmJava32k):
 class ProgrammingLmJava32kChopped(text_problems.ChoppedTextProblem):
   """
   All files are chopped arbitrarily into sequences of length 256 tokens,
-  without regard to article boundaries.
+  without regard to file boundaries.
   """
 
   @property
