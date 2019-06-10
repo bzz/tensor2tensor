@@ -326,6 +326,28 @@ class ProgrammingLmJava32kSplitChopped(text_problems.ChoppedTextProblem):
     """Length of each example (in tokens)."""
     return 256
 
+@registry.register_problem
+class ProgrammingLmJava32kSplitChoppedCharacter(ProgrammingLmJava32kSplitChopped):
+  """Programming LM, character-level."""
+
+  @property
+  def vocab_type(self):
+    return text_problems.VocabType.CHARACTER
+
+  def filepath_to_unicode_strings(self, filepath):
+    """Read text out of an input file.
+    Preprocess, to restor newlines
+
+    Args:
+      filepath: a string
+    Yields:
+      unicode strings.
+    """
+    f = tf.gfile.Open(filepath)
+    b = f.read()
+    c = b.replace('\\n', '\n')
+    del b
+    yield text_encoder.to_unicode_ignore_errors(c)
 
 #TODO:
 # - context/sequence lenght? TPU only supports fixed length examples seq!
@@ -345,6 +367,10 @@ class ProgrammingLmJava32kSplitChopped(text_problems.ChoppedTextProblem):
 # - [x] chopped mode option
 #  ChoppedTextProblem is usually used for that and it
 #    is alos only one, that is affected by --num_concurrent_processes=N
+
+# - [x] char-level model + keep '\n' (custom .filepath_to_unicode_strings())
+
+# - [ ] a custom tokenizer for code that preserves whitespaces
 
 # - discard subtokens by freq <= 3
 #   `SubwordTextEncoder.build_to_target_size(.., min_val=3, ...)`
